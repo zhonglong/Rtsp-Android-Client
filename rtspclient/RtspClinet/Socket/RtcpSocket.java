@@ -12,7 +12,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 
 /**
- *This class is used to send the rtcp packet to the server
+ * This class is used to send the rtcp packet to the server
  */
 public class RtcpSocket {
 
@@ -32,12 +32,12 @@ public class RtcpSocket {
             this.serverIp = serverIp;
             this.serverPort = serverPort;
             mSocket = new DatagramSocket(port);
-            mPacket = new DatagramPacket(message,message.length);
+            mPacket = new DatagramPacket(message, message.length);
             thread = new HandlerThread("RTCPSocketThread");
             thread.start();
             isStoped = false;
             mHandler = new Handler(thread.getLooper());
-        } catch ( SocketException e ) {
+        } catch (SocketException e) {
             e.printStackTrace();
         }
     }
@@ -46,19 +46,19 @@ public class RtcpSocket {
         mHandler.post(new Runnable() {
             @Override
             public void run() {
-                while ( !isStoped ) {
+                while (!isStoped) {
                     try {
                         mSocket.receive(mPacket);
                     } catch (IOException e) {
-                        Log.e(tag,e.toString());
+                        Log.e(tag, e.toString());
                     }
-                    Log.e(tag,"Rtcp rev package " + mPacket.toString());
+                    Log.e(tag, "Rtcp rev package " + mPacket.toString());
                 }
             }
         });
     }
 
-    public void stop(){
+    public void stop() {
         mSocket.close();
         mSocket = null;
         mPacket = null;
@@ -77,10 +77,10 @@ public class RtcpSocket {
 
     private void startSendReport() {
         byte[] sendData = new byte[2];
-        sendData[0] = (byte) Integer.parseInt("10000000",2);
+        sendData[0] = (byte) Integer.parseInt("10000000", 2);
         sendData[1] = (byte) 201;
         try {
-            mPacket = new DatagramPacket(sendData,sendData.length, InetAddress.getByName(serverIp),serverPort);
+            mPacket = new DatagramPacket(sendData, sendData.length, InetAddress.getByName(serverIp), serverPort);
         } catch (UnknownHostException e) {
             e.printStackTrace();
         }

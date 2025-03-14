@@ -32,8 +32,9 @@ public class RtspClient {
     private final static int STATE_STARTING = 0x01;
     private final static int STATE_STOPPING = 0x02;
     private final static int STATE_STOPPED = 0x03;
-    private final static String METHOD_UDP = "udp";
-    private final static String METHOD_TCP = "tcp";
+    public final static String METHOD_UDP = "udp";
+    public final static String METHOD_TCP = "tcp";
+    public final static String METHOD_MCAST = "udp_multicast";
     private final static int TRACK_VIDEO = 0x01;
     private final static int TRACK_AUDIO = 0x02;
 
@@ -65,6 +66,7 @@ public class RtspClient {
     private String mSession;
     private RtpSocket mRtpSocket;
     private boolean isTCPtranslate;
+    private boolean isMulticast;
     private static boolean Describeflag = false; //used to get SDP info
     private static SDPInfo sdpInfo;
     private String authorName, authorPassword, authorBase64;
@@ -74,60 +76,64 @@ public class RtspClient {
 
     private SurfaceView mSurfaceView;
 
-    public RtspClient(String address,String name, String password) {
-        this("udp",address,name,password);
+    public RtspClient(String address, String name, String password) {
+        this("udp", address, name, password);
     }
 
-    public RtspClient(String address, String name ,String password, int port) {
-        this("udp",address,name,password,port);
+    public RtspClient(String address, String name, String password, int port) {
+        this("udp", address, name, password, port);
     }
 
     public RtspClient(String address) {
-        this("udp",address,null,null);
+        this("udp", address, null, null);
     }
 
     public RtspClient(String method, String address) {
-        this(method,address,null,null);
+        this(method, address, null, null);
     }
 
     public RtspClient(String method, String address, int port) {
-        this(method,address,null,null,port);
+        this(method, address, null, null, port);
     }
 
     public RtspClient(String address, int port) {
-        this("udp",address,null,null,port);
+        this("udp", address, null, null, port);
     }
 
-    public RtspClient(String method, String address,String name,String password) {
+    public RtspClient(String method, String address, String name, String password) {
         String url = address.substring(address.indexOf("//") + 2);
-        url = url.substring(0,url.indexOf("/"));
+        url = url.substring(0, url.indexOf("/"));
         String[] tmp = url.split(":");
         Log.d(tag, url);
         authorName = name;
         authorPassword = password;
-        if(tmp.length == 1) ClientConfig(tmp[0], address, 554);
-        else if(tmp.length == 2) ClientConfig(tmp[0], address, Integer.parseInt(tmp[1]));
-        if( method.equalsIgnoreCase(METHOD_UDP) ) {
+        if (tmp.length == 1) ClientConfig(tmp[0], address, 554);
+        else if (tmp.length == 2) ClientConfig(tmp[0], address, Integer.parseInt(tmp[1]));
+        if (method.equalsIgnoreCase(METHOD_UDP)) {
             isTCPtranslate = false;
-        } else if( method.equalsIgnoreCase(METHOD_TCP)) {
+            isMulticast = false;
+        } else if (method.equalsIgnoreCase(METHOD_MCAST)) {
+            isTCPtranslate = false;
+            isMulticast = true;
+        } else if (method.equalsIgnoreCase(METHOD_TCP)) {
             isTCPtranslate = true;
         }
     }
 
-    public RtspClient(String method, String address,String name,String password, int port) {
+    public RtspClient(String method, String address, String name, String password, int port) {
         String url = address.substring(address.indexOf("//") + 2);
-        url = url.substring(0,url.indexOf("/"));
+        url = url.substring(0, url.indexOf("/"));
         authorName = name;
         authorPassword = password;
         ClientConfig(url, address, port);
-        if( method.equalsIgnoreCase(METHOD_UDP) ) {
+        if (method.equalsIgnoreCase(METHOD_UDP)) {
             isTCPtranslate = false;
-        } else if( method.equalsIgnoreCase(METHOD_TCP)) {
+        } else if (method.equalsIgnoreCase(METHOD_TCP)) {
             isTCPtranslate = true;
         }
     }
 
-    public void setSurfaceView( SurfaceView s ) {
+    public void setSurfaceView(SurfaceView s) {
         mSurfaceView = s;
     }
 
@@ -140,11 +146,10 @@ public class RtspClient {
         CSeq = 0;
         mState = STATE_STOPPED;
         mSession = null;
-        if(authorName == null && authorPassword == null) {
+        if (authorName == null && authorPassword == null) {
             authorBase64 = null;
-        }
-        else {
-            authorBase64 = Base64.encodeToString((authorName+":"+authorPassword).getBytes(),Base64.DEFAULT);
+        } else {
+            authorBase64 = Base64.encodeToString((authorName + ":" + authorPassword).getBytes(), Base64.DEFAULT);
         }
 
         final Semaphore signal = new Semaphore(0);
@@ -185,7 +190,7 @@ public class RtspClient {
         public void run() {
             try {
                 sendRequestGetParameter();
-                mHandler.postDelayed(sendGetParameter,55000);
+                mHandler.postDelayed(sendGetParameter, 55000);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -194,32 +199,34 @@ public class RtspClient {
 
     public void abort() {
         try {
-            if(mState == STATE_STARTED) sendRequestTeardown();
-        } catch ( IOException e ) {}
+            if (mState == STATE_STARTED) sendRequestTeardown();
+        } catch (IOException e) {
+        }
         try {
-            if(mSocket!=null) mSocket.close();
-        } catch ( IOException e ) {}
+            if (mSocket != null) mSocket.close();
+        } catch (IOException e) {
+        }
         mState = STATE_STOPPED;
         mHandler.removeCallbacks(startConnection);
         mHandler.removeCallbacks(sendGetParameter);
     }
 
-    public void shutdown(){
-        if(mState == STATE_STARTED ||
+    public void shutdown() {
+        if (mState == STATE_STARTED ||
                 mState == STATE_STARTING) {
             mHandler.removeCallbacks(startConnection);
             mHandler.removeCallbacks(sendGetParameter);
             try {
-                if(mH264Stream!=null) {
+                if (mH264Stream != null) {
                     mH264Stream.stop();
                     mH264Stream = null;
                 }
-                if(mRtpSocket!=null) {
+                if (mRtpSocket != null) {
                     mRtpSocket.stop();
                     mRtpSocket = null;
                 }
-                if(mState == STATE_STARTED) sendRequestTeardown();
-                if(mSocket!=null) {
+                if (mState == STATE_STARTED) sendRequestTeardown();
+                if (mSocket != null) {
                     mSocket.close();
                     mSocket = null;
                 }
@@ -235,7 +242,7 @@ public class RtspClient {
         return mState == STATE_STARTED | mState == STATE_STARTING;
     }
 
-    private void tryConnection () throws IOException {
+    private void tryConnection() throws IOException {
         mSocket = new Socket(mParams.host, mParams.port);
         mBufferreader = new BufferedReader(new InputStreamReader(mSocket.getInputStream()));
         mOutputStream = mSocket.getOutputStream();
@@ -264,12 +271,12 @@ public class RtspClient {
     private void sendRequestSetup() throws IOException {
         Matcher matcher;
         String request;
-        if ( isTCPtranslate ) {
+        if (isTCPtranslate) {
             request = "SETUP rtsp://" + mParams.address + "/" + sdpInfo.videoTrack + " RTSP/1.0\r\n"
                     + "Transport: RTP/AVP/TCP;unicast;client_port=55640-55641" + "\r\n"
                     + addHeaders();
         } else {
-            request = "SETUP rtsp://" + mParams.address + "/" + sdpInfo.videoTrack +" RTSP/1.0\r\n"
+            request = "SETUP rtsp://" + mParams.address + "/" + sdpInfo.videoTrack + " RTSP/1.0\r\n"
                     + "Transport: RTP/AVP/UDP;unicast;client_port=55640-55641" + "\r\n"
                     + addHeaders();
         }
@@ -279,36 +286,47 @@ public class RtspClient {
 
         //there has two different session type, one is without timeout , another is with timeout
         matcher = Response.regexSessionWithTimeout.matcher(mResponse.headers.get("session"));
-        if(matcher.find())  mSession = matcher.group(1);
+        if (matcher.find()) mSession = matcher.group(1);
         else mSession = mResponse.headers.get("session");
-        Log.d(tag,"the session is " + mSession);
+        Log.d(tag, "the session is " + mSession);
 
         //get the port information and start the RTP socket, ready to receive data
-        if(isTCPtranslate) matcher = Response.regexTCPTransport.matcher(mResponse.headers.get("transport"));
-        else matcher = Response.regexUDPTransport.matcher(mResponse.headers.get("transport"));
-        if(matcher.find()) {
-            Log.d(tag, "The client port is:" + matcher.group(1) + " ,the server prot is:" + (isTCPtranslate?"null":matcher.group(2)) + "...");
-            mParams.rtpPort = Integer.parseInt(matcher.group(1));
-            if(!isTCPtranslate) mParams.serverPort = Integer.parseInt(matcher.group(2));
+        if (isTCPtranslate)
+            matcher = Response.regexTCPTransport.matcher(mResponse.headers.get("transport"));
+        else if (isMulticast)
+            matcher = Response.regexMCASTTransport.matcher(mResponse.headers.get("transport"));
+        else
+            matcher = Response.regexUDPTransport.matcher(mResponse.headers.get("transport"));
+        if (matcher.find()) {
+            if (isMulticast) {
+                mParams.rtpPort = Integer.parseInt(matcher.group(2));
+                mParams.host = matcher.group(1);
+            } else {
+                Log.d(tag, "The client port is:" + matcher.group(1) + " ,the server prot is:" + (isTCPtranslate ? "null" : matcher.group(2)) + "...");
+                mParams.rtpPort = Integer.parseInt(matcher.group(1));
+            }
+            if (!isTCPtranslate) mParams.serverPort = Integer.parseInt(matcher.group(2));
 
             //prepare for the video decoder
             mH264Stream = new H264Stream(sdpInfo);
             mH264Stream.setSurfaceView(mSurfaceView);
 
-            if(isTCPtranslate) mRtpSocket = new RtpSocket(isTCPtranslate, mParams.rtpPort, mParams.host, -1,TRACK_VIDEO);
-            else mRtpSocket = new RtpSocket(isTCPtranslate, mParams.rtpPort, mParams.host, mParams.serverPort,TRACK_VIDEO);
+            if (isTCPtranslate)
+                mRtpSocket = new RtpSocket(isTCPtranslate, mParams.rtpPort, mParams.host, -1, TRACK_VIDEO);
+            else
+                mRtpSocket = new RtpSocket(isTCPtranslate, mParams.rtpPort, mParams.host, mParams.serverPort, TRACK_VIDEO);
             mRtpSocket.startRtpSocket();
             mRtpSocket.setStream(mH264Stream);
         } else {
-            if(isTCPtranslate) {
-                Log.d(tag,"Without get the transport port infom, use the rtsp tcp socket!");
+            if (isTCPtranslate) {
+                Log.d(tag, "Without get the transport port infom, use the rtsp tcp socket!");
                 mParams.rtpPort = mParams.port;
 
                 //prepare for the video decoder
                 mH264Stream = new H264Stream(sdpInfo);
                 mH264Stream.setSurfaceView(mSurfaceView);
 
-                mRtpSocket = new RtpSocket(isTCPtranslate,mParams.rtpPort,mParams.host,-2,TRACK_VIDEO);
+                mRtpSocket = new RtpSocket(isTCPtranslate, mParams.rtpPort, mParams.host, -2, TRACK_VIDEO);
                 mRtpSocket.setRtspSocket(mSocket);
                 mRtpSocket.startRtpSocket();
                 mRtpSocket.setStream(mH264Stream);
@@ -341,62 +359,63 @@ public class RtspClient {
 
     private String addHeaders() {
         return "CSeq: " + (++CSeq) + "\r\n"
-                + ((authorBase64 == null)?"":("Authorization: Basic " +authorBase64 +"\r\n"))
+                + ((authorBase64 == null) ? "" : ("Authorization: Basic " + authorBase64 + "\r\n"))
                 + "User-Agent: " + UserAgent + "\r\n"
-                + ((mSession == null)?"":("Session: " + mSession + "\r\n"))
+                + ((mSession == null) ? "" : ("Session: " + mSession + "\r\n"))
                 + "\r\n";
     }
 
     static class Response {
 
-        public static final Pattern regexStatus = Pattern.compile("RTSP/\\d.\\d (\\d+) .+",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexHeader = Pattern.compile("(\\S+): (.+)",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexUDPTransport = Pattern.compile("client_port=(\\d+)-\\d+;server_port=(\\d+)-\\d+",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexTCPTransport = Pattern.compile("client_port=(\\d+)-\\d+;",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSessionWithTimeout = Pattern.compile("(\\S+);timeout=(\\d+)",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPgetTrack1 = Pattern.compile("trackID=(\\d+)",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPgetTrack2 = Pattern.compile("control:(\\S+)",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPmediadescript = Pattern.compile("m=(\\S+) .+",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPpacketizationMode = Pattern.compile("packetization-mode=(\\d);",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPspspps = Pattern.compile("sprop-parameter-sets=(\\S+),(\\S+)",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPlength = Pattern.compile("Content-length: (\\d+)",Pattern.CASE_INSENSITIVE);
-        public static final Pattern regexSDPstartFlag = Pattern.compile("v=(\\d)",Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexStatus = Pattern.compile("RTSP/\\d.\\d (\\d+) .+", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexHeader = Pattern.compile("(\\S+): (.+)", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexUDPTransport = Pattern.compile("client_port=(\\d+)-\\d+;server_port=(\\d+)-\\d+", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexMCASTTransport = Pattern.compile("destination=(\\S+);port=(\\d+)-\\d+", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexTCPTransport = Pattern.compile("client_port=(\\d+)-\\d+;", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSessionWithTimeout = Pattern.compile("(\\S+);timeout=(\\d+)", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPgetTrack1 = Pattern.compile("trackID=(\\d+)", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPgetTrack2 = Pattern.compile("control:(\\S+)", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPmediadescript = Pattern.compile("m=(\\S+) .+", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPpacketizationMode = Pattern.compile("packetization-mode=(\\d);", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPspspps = Pattern.compile("sprop-parameter-sets=(\\S+),(\\S+);", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPlength = Pattern.compile("Content-length: (\\d+)", Pattern.CASE_INSENSITIVE);
+        public static final Pattern regexSDPstartFlag = Pattern.compile("v=(\\d)", Pattern.CASE_INSENSITIVE);
 
         public int state;
-        public static HashMap<String,String> headers = new HashMap<>();
+        public static HashMap<String, String> headers = new HashMap<>();
 
-        public static Response parseResponse(BufferedReader input) throws IOException  {
+        public static Response parseResponse(BufferedReader input) throws IOException {
             Response response = new Response();
             String line;
             Matcher matcher;
             int sdpContentLength = 0;
-            if( (line = input.readLine()) == null) throw new IOException("Connection lost");
+            if ((line = input.readLine()) == null) throw new IOException("Connection lost");
             matcher = regexStatus.matcher(line);
-            if(matcher.find())
+            if (matcher.find())
                 response.state = Integer.parseInt(matcher.group(1));
             else
-                while ( (line = input.readLine()) != null ) {
+                while ((line = input.readLine()) != null) {
                     matcher = regexStatus.matcher(line);
-                    if(matcher.find()) {
+                    if (matcher.find()) {
                         response.state = Integer.parseInt(matcher.group(1));
                         break;
                     }
                 }
-            Log.d(tag, "The response state is: "+response.state);
+            Log.d(tag, "The response state is: " + response.state);
 
             int foundMediaType = 0;
             int sdpHaveReadLength = 0;
             boolean sdpStartFlag = false;
 
-            while ( (line = input.readLine()) != null) {
-                if( line.length() > 3 || Describeflag ) {
+            while ((line = input.readLine()) != null) {
+                if (line.length() > 3 || Describeflag) {
                     Log.d(tag, "The line is: " + line + "...");
                     matcher = regexHeader.matcher(line);
                     if (matcher.find())
                         headers.put(matcher.group(1).toLowerCase(Locale.US), matcher.group(2)); //$ to $
 
                     matcher = regexSDPlength.matcher(line);
-                    if(matcher.find()) {
+                    if (matcher.find()) {
                         sdpContentLength = Integer.parseInt(matcher.group(1));
                         sdpHaveReadLength = 0;
                     }
@@ -418,27 +437,29 @@ public class RtspClient {
                         }
 
                         matcher = regexSDPspspps.matcher(line);
-                        if(matcher.find()) {
+                        if (matcher.find()) {
                             sdpInfo.SPS = matcher.group(1);
                             sdpInfo.PPS = matcher.group(2);
                         }
 
                         matcher = regexSDPgetTrack1.matcher(line);
-                        if(matcher.find())
-                            if (foundMediaType == 1) sdpInfo.audioTrack = "trackID=" + matcher.group(1);
-                            else if (foundMediaType == 2) sdpInfo.videoTrack = "trackID=" + matcher.group(1);
+                        if (matcher.find())
+                            if (foundMediaType == 1)
+                                sdpInfo.audioTrack = "trackID=" + matcher.group(1);
+                            else if (foundMediaType == 2)
+                                sdpInfo.videoTrack = "trackID=" + matcher.group(1);
 
 
                         matcher = regexSDPgetTrack2.matcher(line);
-                        if(matcher.find())
+                        if (matcher.find())
                             if (foundMediaType == 1) sdpInfo.audioTrack = matcher.group(1);
                             else if (foundMediaType == 2) sdpInfo.videoTrack = matcher.group(1);
 
 
                         matcher = regexSDPstartFlag.matcher(line);
-                        if(matcher.find()) sdpStartFlag = true;
-                        if(sdpStartFlag) sdpHaveReadLength += line.getBytes().length + 2;
-                        if((sdpContentLength < sdpHaveReadLength + 2) && (sdpContentLength != 0)) {
+                        if (matcher.find()) sdpStartFlag = true;
+                        if (sdpStartFlag) sdpHaveReadLength += line.getBytes().length + 2;
+                        if ((sdpContentLength < sdpHaveReadLength + 2) && (sdpContentLength != 0)) {
                             Describeflag = false;
                             sdpStartFlag = false;
                             Log.d(tag, "The SDP info: "
@@ -459,9 +480,9 @@ public class RtspClient {
 
             }
 
-            if( line == null ) throw new IOException("Connection lost");
+            if (line == null) throw new IOException("Connection lost");
 
-            return  response;
+            return response;
         }
     }
 }

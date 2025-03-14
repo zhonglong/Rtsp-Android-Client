@@ -33,7 +33,7 @@ public abstract class VideoStream extends RtpStream {
 
     @Override
     protected void recombinePacket(StreamPacks streamPacks) {
-        if(streamPacks.pt == 96) H264PacketRecombine(streamPacks);
+        if (streamPacks.pt == 96) H264PacketRecombine(streamPacks);
     }
 
     //This method is used to get the NAL unit from the RTP packet
@@ -68,18 +68,18 @@ public abstract class VideoStream extends RtpStream {
                     case 0x80:
                         NALEndFlag = false;
                         packetNum = 1;
-                        bufferLength = streamPacks.data.length-1 ;
-                        buffer[1] = new byte[streamPacks.data.length-1];
-                        buffer[1][0] = (byte)((streamPacks.data[0] & 0xE0)|(streamPacks.data[1]&0x1F));
-                        System.arraycopy(streamPacks.data,2,buffer[1],1,streamPacks.data.length-2);
+                        bufferLength = streamPacks.data.length - 1;
+                        buffer[1] = new byte[streamPacks.data.length - 1];
+                        buffer[1][0] = (byte) ((streamPacks.data[0] & 0xE0) | (streamPacks.data[1] & 0x1F));
+                        System.arraycopy(streamPacks.data, 2, buffer[1], 1, streamPacks.data.length - 2);
                         break;
                     //NAL Unit middle packet
                     case 0x00:
                         NALEndFlag = false;
                         packetNum++;
-                        bufferLength += streamPacks.data.length-2;
-                        buffer[packetNum] = new byte[streamPacks.data.length-2];
-                        System.arraycopy(streamPacks.data,2,buffer[packetNum],0,streamPacks.data.length-2);
+                        bufferLength += streamPacks.data.length - 2;
+                        buffer[packetNum] = new byte[streamPacks.data.length - 2];
+                        System.arraycopy(streamPacks.data, 2, buffer[packetNum], 0, streamPacks.data.length - 2);
                         break;
                     //NAL Unit end packet
                     case 0x40:
@@ -92,11 +92,11 @@ public abstract class VideoStream extends RtpStream {
                         tmpLen = 4;
                         System.arraycopy(buffer[1], 0, NALUnit, tmpLen, buffer[1].length);
                         tmpLen += buffer[1].length;
-                        for(int i = 2; i < packetNum+1; ++i) {
-                            System.arraycopy(buffer[i],0,NALUnit,tmpLen,buffer[i].length);
+                        for (int i = 2; i < packetNum + 1; ++i) {
+                            System.arraycopy(buffer[i], 0, NALUnit, tmpLen, buffer[i].length);
                             tmpLen += buffer[i].length;
                         }
-                        System.arraycopy(streamPacks.data,2,NALUnit,tmpLen,streamPacks.data.length-2);
+                        System.arraycopy(streamPacks.data, 2, NALUnit, tmpLen, streamPacks.data.length - 2);
                         break;
                 }
                 break;
@@ -107,16 +107,16 @@ public abstract class VideoStream extends RtpStream {
 
             //Single NAL unit per packet
             default:
-                NALUnit = new byte[4+streamPacks.data.length];
+                NALUnit = new byte[4 + streamPacks.data.length];
                 NALUnit[0] = 0x00;
                 NALUnit[1] = 0x00;
                 NALUnit[2] = 0x00;
                 NALUnit[3] = 0x01;
-                System.arraycopy(streamPacks.data,0,NALUnit,4,streamPacks.data.length);
+                System.arraycopy(streamPacks.data, 0, NALUnit, 4, streamPacks.data.length);
                 NALEndFlag = true;
                 break;
         }
-        if(NALEndFlag){
+        if (NALEndFlag) {
             decodeH264Stream();
         }
     }
